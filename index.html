@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/script.js" defer></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+  <div class="logo">Portfolio<span>.</span></div>
+  <nav>
+    <ul>
+      <li><a href="index.html" class="active">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="services.html">Services</a></li>
+      <li><a href="portfolio.html">Portfolio</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </nav>
+</header>
+
+
+  <!-- Hero Section -->
+  <section id="home" class="hero">
+    <div class="hero-text">
+      <h2>Hello, I am <span class="highlight">David Bartzen</span></h2>
+
+        <h1>
+            <span id="changing-text">Web Developer</span>
+        </h1>
+
+      <h3>Full Stack Developer & Creative Designer</h3>
+      <p>
+        I create exceptional digital experiences through innovative web development and stunning design solutions. 
+        Passionate about crafting user-centric applications that make a difference.
+      </p>
+      <div class="buttons">
+        <a href="#" class="btn">Download CV</a>
+        <a href="#contact" class="btn btn-outline">Contact Me</a>
+      </div>
+      <div class="socials">
+        <a href="#"><i class="fab fa-facebook"></i></a>
+        <a href="#"><i class="fab fa-tiktok"></i></a>
+        <a href="#"><i class="fab fa-instagram"></i></a>
+        <a href="#"><i class="fab fa-linkedin"></i></a>
+        <a href="#"><i class="fab fa-github"></i></a>
+      </div>
+    </div>
+    <div class="hero-img">
+   <div id="avatar3d"></div>
+  </div>
+  <div id="tts-ui" style="margin-top:12px; display:flex; flex-direction:column; gap:6px; max-width:420px;">
+    <textarea id="tts-text" rows="3" placeholder="Digite o texto que o personagem deve ler..." style="width:100%; padding:8px;"></textarea>
+    <div style="display:flex; gap:8px;">
+      <button id="tts-speak" class="btn">Falar</button>
+      <button id="tts-stop" class="btn btn-outline">Parar</button>
+      <label style="margin-left:auto; align-items:center; display:flex; gap:6px;"><input id="tts-use-boundary" type="checkbox" checked /> Usar eventos de boundary</label>
+    </div>
+  </div>
+  <div id="mouth-overlay" style="position:relative; width:0; height:0;"></div>
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+  import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+  import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+  import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+  import { ColladaLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/ColladaLoader.js';
+
+  const container = document.getElementById('avatar3d');
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 100);
+  camera.position.set(0, 1.6, 2.5);
+  camera.lookAt(0, 1, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setSize(container.clientWidth || 400, container.clientHeight || 400);
+  if ('outputColorSpace' in renderer) {
+    renderer.outputColorSpace = THREE.SRGBColorSpace || THREE.sRGBEncoding;
+  } else {
+    renderer.outputEncoding = THREE.sRGBEncoding;
+  }
+  renderer.physicallyCorrectLights = true;
+  container.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0, 1, 0);
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+  hemi.position.set(0, 20, 0);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(5, 10, 7.5);
+  scene.add(dir);
+
+  const clock = new THREE.Clock();
+  let mixer = null;
+  let jawBone = null;
+  let mouthCurrent = 0;
+  let mouthTarget = 0;
+  const MOUTH_OPEN_ROT = 0.45; // radians when fully open
+  const loader = new GLTFLoader();
+  const animLoader = new GLTFLoader();
+  const colladaLoader = new ColladaLoader();
+  const fbxLoader = new FBXLoader();
+
+  function normalizeName(s) {
+    return (s || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
+  }
+
+  function remapAndPlay(model, clip) {
+    if (!clip || !clip.tracks) return false;
+    const boneNames = new Set();
+    model.traverse((n) => {
+      if (n.isBone) boneNames.add(n.name);
+      if (n.isSkinnedMesh && n.skeleton) n.skeleton.bones.forEach(b => boneNames.add(b.name));
+    });
+    const boneList = Array.from(boneNames);
+
+    const nameMap = {};
+    clip.tracks.forEach((track) => {
+      const parts = track.name.split('.');
+      const srcNode = parts[0];
+      const nSrc = normalizeName(srcNode);
+      if (!nSrc) return;
+      if (nameMap[srcNode]) return;
+      let found = boneList.find(b => normalizeName(b) === nSrc);
+      if (!found) found = boneList.find(b => normalizeName(b).includes(nSrc) || nSrc.includes(normalizeName(b)));
+      if (found) nameMap[srcNode] = found;
+    });
+
+    console.log('Remap nameMap:', nameMap);
+
+    const remappedTracks = [];
+    clip.tracks.forEach((track) => {
+      const parts = track.name.split('.');
+      const srcNode = parts[0];
+      const rest = parts.slice(1).join('.');
+      const target = nameMap[srcNode];
+      if (!target) return;
+      const newName = `${target}.${rest}`;
+      const cloned = track.clone();
+      cloned.name = newName;
+      remappedTracks.push(cloned);
+    });
+
+    if (remappedTracks.length === 0) {
+      // fallback: try direct play
+      try {
+        if (!mixer) mixer = new THREE.AnimationMixer(model);
+        const action = mixer.clipAction(clip, model);
+        action.reset();
+        action.play();
+        console.log('Direct clip applied (fallback).');
+        window.mixer = mixer;
+        return true;
+      } catch (err) {
+        console.warn('Direct clip play failed:', err);
+        return false;
+      }
+    }
+
+    const remappedClip = new THREE.AnimationClip(clip.name + '_retarget', clip.duration, remappedTracks);
+    try {
+      if (!mixer) mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(remappedClip, model);
+      action.reset();
+      action.play();
+      console.log('Remapped animation played.');
+      window.mixer = mixer;
+      return true;
+    } catch (err) {
+      console.warn('Failed to play remapped clip:', err);
+      return false;
+    }
+  }
+
+  function onModelLoaded(model, sourceAnimations) {
+    // materials
+    model.traverse((node) => {
+      if (node.isMesh) {
+        const mat = node.material;
+        if (mat) {
+          if (mat.map) {
+            if ('colorSpace' in mat.map) mat.map.colorSpace = THREE.SRGBColorSpace || THREE.sRGBEncoding;
+            else mat.map.encoding = THREE.sRGBEncoding;
+          }
+          if (mat.emissiveMap) {
+            if ('colorSpace' in mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace || THREE.sRGBEncoding;
+            else mat.emissiveMap.encoding = THREE.sRGBEncoding;
+          }
+          mat.needsUpdate = true;
+        }
+        node.frustumCulled = false;
+      }
+    });
+
+    // center/scale
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = maxDim > 0 ? (1.4 / maxDim) : 1;
+    model.scale.setScalar(scale);
+    box.setFromObject(model);
+    box.getCenter(model.position).multiplyScalar(-1);
+    model.rotation.y = Math.PI;
+    function flipModel() { model.rotation.y += Math.PI; }
+    window.flipModel = flipModel;
+
+    scene.add(model);
+
+    // try to find a jaw/mouth bone for lip movement
+    jawBone = null;
+    model.traverse((n) => {
+      if (!jawBone && (n.isBone || n.isObject3D)) {
+        const nm = (n.name || '').toLowerCase();
+        if (nm.includes('jaw') || nm.includes('mouth') || nm.includes('jaw_end') || nm.includes('jaw_ctrl')) {
+          jawBone = n;
+        }
+      }
+    });
+
+    if (jawBone) {
+      console.log('Jaw bone found for TTS animation:', jawBone.name);
+      window.jawBone = jawBone;
+    } else {
+      // create a simple 2D mouth overlay fallback
+      const containerEl = container;
+      containerEl.style.position = containerEl.style.position || 'relative';
+      const overlay = document.getElementById('mouth-overlay');
+      overlay.innerHTML = '<div id="mouth-2d" style="position:absolute; left:50%; transform:translateX(-50%); bottom:18%; width:80px; height:22px; background:#1b1b1b; border-radius:12px; opacity:0.95; transform-origin:center;"></div>';
+      // ensure overlay sits over avatar
+      const mouth2d = document.getElementById('mouth-2d');
+      if (mouth2d) {
+        mouth2d.style.transition = 'transform 0.06s ease';
+      }
+      console.log('No jaw bone found — using 2D mouth overlay fallback.');
+    }
+
+    // prepare mixer and store model's own clips as fallback (do not auto-play)
+    if (!mixer) mixer = new THREE.AnimationMixer(model);
+    window.mixer = mixer;
+    let externalApplied = false;
+    let modelSourceClips = (sourceAnimations && sourceAnimations.length) ? sourceAnimations : null;
+
+    // try animate.glb (preferred external animation)
+    animLoader.load('./assets/animate.glb', (gltf) => {
+      const anims = gltf.animations || [];
+      if (anims.length) {
+        if (remapAndPlay(model, anims[0])) {
+          externalApplied = true;
+          return;
+        }
+      }
+      // if animate.glb exists but remapping failed, we'll try model's own clips later
+    }, undefined, (err) => {
+      console.warn('animate.glb load failed:', err);
+    });
+
+    // try animate.dae as a secondary option
+    colladaLoader.load('./assets/animate.dae', (collada) => {
+      const anims = collada.animations || (collada.scene && collada.scene.animations) || [];
+      if (anims.length) {
+        if (remapAndPlay(model, anims[0])) {
+          externalApplied = true;
+          return;
+        }
+      }
+    }, undefined, (err) => {
+      // not critical
+    });
+
+    // after a short delay, if no external animation applied, play model's own clip (fallback)
+    setTimeout(() => {
+      if (!externalApplied && modelSourceClips && modelSourceClips.length) {
+        try {
+          mixer.clipAction(modelSourceClips[0]).play();
+          console.log('Played model builtin animation (fallback).');
+        } catch (e) {
+          console.warn('Failed to play model builtin animation:', e);
+        }
+      }
+    }, 250);
+  }
+
+  // Prefer GLB model (avatar.glb). If it fails, attempt FBX as fallback.
+  const glbModelPath = './assets/avatar.glb';
+  loader.load(glbModelPath, (gltf) => {
+    console.log('Loaded GLB model:', glbModelPath);
+    onModelLoaded(gltf.scene, gltf.animations || []);
+  }, undefined, (err) => {
+    console.warn('Error loading avatar.glb:', err);
+    // fallback to FBX if present
+    const fbxModelPath = './assets/avatar.fbx';
+    fbxLoader.load(fbxModelPath, (fbx) => {
+      console.log('Loaded FBX fallback:', fbxModelPath);
+      onModelLoaded(fbx, fbx.animations || []);
+    }, undefined, (err2) => {
+      console.error('Error loading fallback FBX:', err2);
+    });
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    if (mixer) mixer.update(delta);
+    controls.update();
+
+    // update mouth/jaw animation (lerp toward target)
+    mouthCurrent += (mouthTarget - mouthCurrent) * 0.25;
+    if (jawBone) {
+      // rotate jaw downwards to open (negative X often opens jaw depending on rig)
+      jawBone.rotation.x = - (mouthCurrent * MOUTH_OPEN_ROT);
+    } else {
+      const m2 = document.getElementById('mouth-2d');
+      if (m2) {
+        const sy = 1 + mouthCurrent * 0.9;
+        m2.style.transform = `translateX(-50%) scaleY(${sy})`;
+      }
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth || 400;
+    const h = container.clientHeight || 400;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+
+  // --- TTS / mouth control ---
+  function isVowelChar(c) {
+    return /[aeiouáàãâéêíóôõúüy]/i.test(c);
+  }
+
+  function speakText(text) {
+    if (!('speechSynthesis' in window)) {
+      alert('Speech Synthesis não é suportado neste navegador.');
+      return;
+    }
+    const useBoundary = document.getElementById('tts-use-boundary')?.checked;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'pt-BR';
+    utter.rate = 1;
+    utter.pitch = 1;
+
+    utter.onstart = () => {
+      mouthTarget = 0.8;
+    };
+
+    if (useBoundary && 'onboundary' in SpeechSynthesisUtterance.prototype) {
+      utter.onboundary = (ev) => {
+        // some browsers fire word/char boundaries; use charIndex to sample text
+        const idx = ev.charIndex || 0;
+        const ch = text[idx] || '';
+        mouthTarget = isVowelChar(ch) ? 1.0 : 0.25;
+      };
+    } else {
+      // fallback: simple periodic mouth movement based on estimated duration
+      const estMs = Math.max(800, text.length * 60);
+      const start = performance.now();
+      const interval = setInterval(() => {
+        const t = performance.now() - start;
+        const phase = Math.abs(Math.sin((t / 120) * Math.PI));
+        mouthTarget = 0.3 + phase * 0.7;
+      }, 80);
+      utter.onend = () => {
+        clearInterval(interval);
+      };
+    }
+
+    utter.onend = () => {
+      mouthTarget = 0;
+    };
+
+    window.speakingUtter = utter;
+    speechSynthesis.speak(utter);
+  }
+
+  function stopSpeaking() {
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+    }
+    mouthTarget = 0;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('tts-speak');
+    const btnStop = document.getElementById('tts-stop');
+    const ta = document.getElementById('tts-text');
+    if (btn && ta) btn.addEventListener('click', () => speakText(ta.value || ta.placeholder || 'Olá!'));
+    if (btnStop) btnStop.addEventListener('click', stopSpeaking);
+  });
+</script>
+  </section>
+
+</body>
+</html>
