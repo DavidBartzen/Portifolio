@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Portfolio</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script src="js/script.js" defer></script>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   
   <script type="importmap">
@@ -257,7 +257,7 @@
     let modelSourceClips = (sourceAnimations && sourceAnimations.length) ? sourceAnimations : null;
 
     // try animate.glb (preferred external animation)
-    animLoader.load('./assets/animate.glb', (gltf) => {
+    animLoader.load('animate.glb', (gltf) => {
       const anims = gltf.animations || [];
       if (anims.length) {
         if (remapAndPlay(model, anims[0])) {
@@ -271,7 +271,7 @@
     });
 
     // try animate.dae as a secondary option
-    colladaLoader.load('./assets/animate.dae', (collada) => {
+    colladaLoader.load('animate.dae', (collada) => {
       const anims = collada.animations || (collada.scene && collada.scene.animations) || [];
       if (anims.length) {
         if (remapAndPlay(model, anims[0])) {
@@ -297,14 +297,14 @@
   }
 
   // Prefer GLB model (avatar.glb). If it fails, attempt FBX as fallback.
-  const glbModelPath = './assets/avatar.glb';
+  const glbModelPath = 'avatar.glb';
   loader.load(glbModelPath, (gltf) => {
     console.log('Loaded GLB model:', glbModelPath);
     onModelLoaded(gltf.scene, gltf.animations || []);
   }, undefined, (err) => {
     console.warn('Error loading avatar.glb:', err);
     // fallback to FBX if present
-    const fbxModelPath = './assets/avatar.fbx';
+    const fbxModelPath = 'avatar.fbx';
     fbxLoader.load(fbxModelPath, (fbx) => {
       console.log('Loaded FBX fallback:', fbxModelPath);
       onModelLoaded(fbx, fbx.animations || []);
@@ -411,3 +411,4 @@
 
 </body>
 </html>
+
